@@ -1,8 +1,8 @@
-# HomeDashboard Garage Door Opener
+# HomeDashboard DS18B20 sensor reader
 
-Home Dashboard BME280 Arduino project for NodeMCU (ESP8266)
+Home Dashboard BME280 Arduino project for NodeMCU (ESP8266) / WIFI Kit 8 (128x32 OLED)
 
-This program connect to an MQTT server and receives commands from mqtt and publishes status of the garage door to mqtt.
+This program connect to an MQTT server and receives commands from mqtt and publishes status of the sensors to mqtt.
 
 # Configuration
 
