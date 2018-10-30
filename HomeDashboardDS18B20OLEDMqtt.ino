@@ -2,6 +2,8 @@
 
 #include "HomeDashboardDS18B20OLEDMqtt.h"
 
+#include "HomeDashboardMqtt.h"
+
 #include <U8g2lib.h>
 
 #include <OneWire.h>
@@ -12,34 +14,6 @@
 // you need to change PubSubClient.h MQTT_MAX_PACKET_SIZE to 254
 #include <SPI.h>
 #include <Wire.h>
-
-/*
-void loop(void) {
-  u8g2.clearBuffer();					// clear the internal memory
-  u8g2.setFont(u8g2_font_ncenB08_tr);	// choose a suitable font
-
-  char buffer[40];
-
-  sensors.requestTemperatures();
-
-  sprintf(buffer, "Number of sensors: %02d", sensorCount);
-  u8g2.drawStr(0,10,buffer);
-
-  for (int i = 0; i < sensorCount; i++)
-  {
-    temperature = sensors.getTempCByIndex(i);
-    char str_temp[6];
-    dtostrf(temperature, 4, 2, str_temp);    
-    sprintf(buffer, "temp: %s", str_temp);
-    Serial.print("temp: ");
-    Serial.println(temperature);
-    u8g2.drawStr(0,20 + i*10,buffer);
-  }
-
-  u8g2.sendBuffer();					// transfer internal memory to the display
-  delay(1000);  
-}
-*/
 
 #include <Adafruit_SSD1306.h>
 
@@ -57,6 +31,116 @@ void loop(void) {
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
+
+int sensorCount = 0;
+
+float temperature;
+
+void currentState(JsonObject &jsonObject);
+void loadSettings(JsonObject &jsonObject);
+void saveSettings(JsonObject &jsonObject);
+void onCommand(JsonObject &jsonObject);
+
+HomeDashboardMqtt homeDashboard(
+    (char *)"DS18B20", // type
+    1,                 // version
+    STATUS_LED,
+    WIFI_RESET_BUTTON,
+    &currentState,
+    &loadSettings,
+    &saveSettings,
+    &onCommand);
+
+void setup()
+{
+  Serial.begin(115200);
+  initSensors();
+  homeDashboardMqtt = &homeDashboard;
+  homeDashboardMqtt->init();
+}
+
+void loop()
+{
+  homeDashboardMqtt->loop();
+}
+
+void currentState(JsonObject &jsonObject)
+{
+  sensors.requestTemperatures();
+  JsonArray &temperatures = jsonObject.createNestedArray("temperature");
+  for (int i = 0; i < sensorCount; i++)
+  {
+    temperature = sensors.getTempCByIndex(i);
+    if (isnan(temperature))
+    {
+      temperatures.add(NULL);
+    }
+    else
+    {
+      temperatures.add(temperature);
+    }
+  }
+
+  jsonObject["rssi"] = WiFi.RSSI();
+}
+
+void onCommand(JsonObject &jsonObject)
+{
+  if (jsonObject.containsKey("command"))
+  {
+    char command[80];
+    strcpy(command, jsonObject["command"]);
+
+    if (strcmp(command, "read") == 0)
+    {
+      homeDashboardMqtt->publishState();
+    }
+    else if (strcmp(command, "readSettings") == 0)
+    {
+      homeDashboardMqtt->publishCurrentSettings();
+    }
+    else
+    {
+      Serial.println("unknown command!");
+    }
+  }
+  else {
+    Serial.print("Invalid command received, missing \"command\" element!");
+  }
+}
+
+void loadSettings(JsonObject &jsonObject)
+{
+  Serial.println("load settings callback");
+}
+
+void saveSettings(JsonObject &jsonObject)
+{
+  Serial.println("saving settings callback");
+}
+
+void initSensors()
+{
+  Serial.println(F("try DS18B20"));
+  sensors.begin();
+  sensorCount = sensors.getDS18Count();
+  Serial.print("Number of sensors: ");
+  Serial.println(sensorCount);
+}
+
+//U8g2 Contructor
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, 16, 5, 4);
+
+u8g2_uint_t width;
+
+void initDisplay()
+{
+  u8g2.begin();
+}
+
+/*
 //define your default values here, if there are different values in config.json, they are overwritten.
 char mqtt_server[40];
 char mqtt_port[6] = "1883";
@@ -96,9 +180,7 @@ float temperature;
 char temperatureString[6];
 
 //U8g2 Contructor
-U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, /* reset=*/16, /* clock=*/5, /* data=*/4);
-// Alternative board version. Uncomment if above doesn't work.
-// U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ 4, /* clock=*/ 14, /* data=*/ 2);
+U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, 16, 5, 4);
 
 u8g2_uint_t width;
 
@@ -120,8 +202,6 @@ void drawWelcome()
   u8g2.setCursor(1, 20);
   u8g2.print(device_name);
 
-  // u8g2.setFont(u8g2_font_ncenB08_tr);
-  // u8g2.drawStr(0,10,"Hello World!");
   u8g2.sendBuffer();
 }
 
@@ -183,7 +263,7 @@ void checkButtonCommands()
 }
 
 //callback notifying us of the need to save config
-void saveConfigCallback()
+void saveConfigCallback1()
 {
   Serial.println("saving config");
 
@@ -359,7 +439,8 @@ void reconnectToMqtt()
 
     deviceRegistration();
     client.subscribe(MQTT_TOPIC_REGISTRATION);
-    strcpy(inTopic, "/homedashboard/");
+    
+    strcpy(inTopic, "homedashboard/device");
     strcat(inTopic, device_name);
     strcpy(outTopic, inTopic);
     strcat(inTopic, "/in");
@@ -581,17 +662,14 @@ void setup()
   //wifiManager.resetSettings();
 
   //read configuration from FS json
-  Serial.println("mounting FS...");
+  
 
   loadConfig();
 
   drawWelcome();
 
-  //WiFiManager
-  //Local intialization. Once its business is done, there is no need to keep it around
-
   //set config save notify callback
-  wifiManager.setSaveConfigCallback(saveConfigCallback);
+  wifiManager.setSaveConfigCallback(saveConfigCallback1);
 
   // set static ip
   // wifiManager.setSTAStaticIPConfig(IPAddress(10, 0, 1, 99), IPAddress(10, 0, 1, 1), IPAddress(255, 255, 255, 0));
@@ -623,3 +701,4 @@ void loop()
   }
   checkButtonCommands();
 }
+*/
