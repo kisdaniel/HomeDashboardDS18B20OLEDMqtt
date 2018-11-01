@@ -2,9 +2,8 @@
 
 #include "HomeDashboardDS18B20OLEDMqtt.h"
 
+#include "HomeDashboardOLED.h"
 #include "HomeDashboardMqtt.h"
-
-#include <U8g2lib.h>
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -37,6 +36,10 @@ DallasTemperature sensors(&oneWire);
 int sensorCount = 0;
 
 float temperature;
+char str_temp[5];
+char buffer[15];
+
+boolean wifiResetPreviousState = false;
 
 void currentState(JsonObject &jsonObject);
 void loadSettings(JsonObject &jsonObject);
@@ -51,19 +54,37 @@ HomeDashboardMqtt homeDashboard(
     &currentState,
     &loadSettings,
     &saveSettings,
-    &onCommand);
+    &onCommand,
+#ifdef OLED
+    &oledDisplayLogEntry
+#else
+    &dummyLogEntryHandler
+#endif
+);
 
 void setup()
 {
+  delay(100);
+
   Serial.begin(115200);
-  initSensors();
+
+#ifdef OLED
+  oledDisplayStatusDrawCallback(&oledDrawStatus);
+  oledDisplayInit();
+#endif
+
+  delay(100);
+
   homeDashboardMqtt = &homeDashboard;
+  initPins();
   homeDashboardMqtt->init();
 }
 
 void loop()
 {
   homeDashboardMqtt->loop();
+  wifiResetButtonLoop();
+  oledDisplayLoop();
 }
 
 void currentState(JsonObject &jsonObject)
@@ -82,8 +103,10 @@ void currentState(JsonObject &jsonObject)
       temperatures.add(temperature);
     }
   }
-
   jsonObject["rssi"] = WiFi.RSSI();
+#ifdef OLED
+  oledDisplayRedraw();
+#endif
 }
 
 void onCommand(JsonObject &jsonObject)
@@ -101,27 +124,48 @@ void onCommand(JsonObject &jsonObject)
     {
       homeDashboardMqtt->publishCurrentSettings();
     }
+    else if (strcmp(command, "reset") == 0)
+    {
+      homeDashboardMqtt->resetSettings();
+    }
+    else if (strcmp(command, "showLogs") == 0)
+    {
+      #ifdef OLED
+      oledDisplayChangeMode(OLED_MODE_LOG);
+      #endif
+    }
+    else if (strcmp(command, "showNetworkState") == 0)
+    {
+      #ifdef OLED
+      oledDisplayChangeMode(OLED_MODE_NETWORK_STATE);
+      #endif
+    }
+    else if (strcmp(command, "showState") == 0)
+    {
+      #ifdef OLED
+      oledDisplayChangeMode(OLED_MODE_STATE);
+      #endif
+    }
     else
     {
-      Serial.println("unknown command!");
+      homeDashboardMqtt->error("unknown command!");
     }
   }
-  else {
+  else
+  {
     Serial.print("Invalid command received, missing \"command\" element!");
   }
 }
 
 void loadSettings(JsonObject &jsonObject)
 {
-  Serial.println("load settings callback");
 }
 
 void saveSettings(JsonObject &jsonObject)
 {
-  Serial.println("saving settings callback");
 }
 
-void initSensors()
+void initPins()
 {
   Serial.println(F("try DS18B20"));
   sensors.begin();
@@ -130,14 +174,71 @@ void initSensors()
   Serial.println(sensorCount);
 }
 
-//U8g2 Contructor
-U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, 16, 5, 4);
-
-u8g2_uint_t width;
-
-void initDisplay()
+#ifdef OLED
+void oledDrawStatus(U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2)
 {
-  u8g2.begin();
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_open_iconic_embedded_1x_t);
+  u8g2.setFontMode(1); // enable transparent mode, which is faster
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    u8g2.drawGlyph(0, 31, 0x50); // WIFI
+    u8g2.setFont(u8g2_font_6x10_tf);
+    u8g2.drawStr(16, 31, WiFi.SSID().c_str());
+  }
+  else
+  {
+    u8g2.drawGlyph(0, 31, 0x47); // ERROR
+    u8g2.setFont(u8g2_font_6x10_tf);
+    String wifiStatus = wifiStatusAsText();
+    u8g2.drawStr(16, 31, wifiStatus.c_str());
+    // delete wifiStatus;
+  }
+
+  if (sensorCount == 1)
+  {
+    u8g2.setFont(u8g2_font_ncenB18_tr);
+    u8g2.setFontMode(1);
+    temperature = sensors.getTempCByIndex(0);
+    dtostrf(temperature, 4, 1, str_temp);
+    sprintf(buffer, "%s C", str_temp);
+    u8g2.drawStr(0, 21, buffer);
+  }
+  else if (sensorCount > 1)
+  {
+    u8g2.setFont(u8g2_font_ncenB10_tr);
+    u8g2.setFontMode(1);
+
+    temperature = sensors.getTempCByIndex(0);
+    dtostrf(temperature, 4, 1, str_temp);
+    sprintf(buffer, "%s C (1.)", str_temp);
+    u8g2.drawStr(0, 11, buffer);
+
+    temperature = sensors.getTempCByIndex(1);
+    dtostrf(temperature, 4, 1, str_temp);
+    sprintf(buffer, "%s C (2.)", str_temp);
+    u8g2.drawStr(0, 21, buffer);
+  }
+  u8g2.sendBuffer();
+}
+#endif
+
+void wifiResetButtonLoop()
+{
+  bool wifiReset = digitalRead(WIFI_RESET_BUTTON) == PRESSED;
+  if (wifiReset != wifiResetPreviousState)
+  {
+    if (!wifiReset)
+    {
+      homeDashboardMqtt->info("reset pressed");
+      oledDisplayChangeMode();
+    }
+    wifiResetPreviousState = wifiReset;
+  }
+}
+
+void dummyLogEntryHandler(const char *message)
+{
 }
 
 /*
@@ -179,10 +280,10 @@ float temperature;
 
 char temperatureString[6];
 
-//U8g2 Contructor
-U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, 16, 5, 4);
+// U8g2 Contructor
+// U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2(U8G2_R0, 16, 5, 4);
 
-u8g2_uint_t width;
+// u8g2_uint_t width;
 
 void initDisplay()
 {

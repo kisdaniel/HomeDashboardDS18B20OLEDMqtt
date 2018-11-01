@@ -21,6 +21,10 @@
 #define NETWORK_STATUS_CONNECTING_TO_MQTT 512
 #define NETWORK_STATUS_CONNECTED 1023
 
+#define LOG_LEVEL_ERROR 0
+#define LOG_LEVEL_WARNING 1
+#define LOG_LEVEL_INFO 2
+
 class HomeDashboardMqtt
 {
 public:
@@ -31,7 +35,8 @@ public:
                     void (*currentState)(JsonObject &json),
                     void (*loadSettings)(JsonObject &json),
                     void (*saveSettings)(JsonObject &json),
-                    void (*onCommand)(JsonObject &json));
+                    void (*onCommand)(JsonObject &json),
+                    void (*onLogEntry)(const char *message));
   void init();
   void loop();
   void loadConfig();
@@ -48,16 +53,26 @@ public:
   void publishState();
   void flashLedIn();
   void flashLedOut();
-  String IpAddress2String(const IPAddress &ipAddress);
   void saveConfig();
 
   void initTopic();
+
+  void resetSettings();
+
+  void info(const char *message);
+  void info(String message);  
+  void error(const char *message);
+  void error(String message);
+  void log(const char *message);
 
   char mqtt_server[40];
   char mqtt_port[6];
   char mqtt_user[100];
   char mqtt_password[100];
   char device_name[34];
+
+  boolean logToSerial;
+  boolean logToMqtt;
 
   DynamicJsonBuffer *jsonBuffer;
 
@@ -79,18 +94,24 @@ private:
   boolean mqttFailedBefore;
   long lastConnectRetry;
 
+  char sprintfBuffer[255];
   char topicDeviceCommand[69];
   char topicDeviceState[69];
   char topicDeviceHeartbeat[69];
   char topicDeviceChangeSettings[69];
   char topicDeviceCurrentSettings[69];
+  char topicDeviceLog[69];
 
   void (*currentStateCallBack)(JsonObject &json);
   void (*loadSettingsCallBack)(JsonObject &json);
   void (*saveSettingsCallBack)(JsonObject &json);
   void (*onCommandCallBack)(JsonObject &json);
+  void (*onLogEntryCallback)(const char *message);
 };
 
 extern HomeDashboardMqtt *homeDashboardMqtt;
+extern String ipAddress2String(const IPAddress &ipAddress);
+extern int getRSSIasQuality(int RSSI);
+extern String wifiStatusAsText();
 
 #endif
