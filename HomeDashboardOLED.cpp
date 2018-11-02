@@ -152,7 +152,9 @@ inline void oladAddLogEntryToBufferWithTruncate(const char *message)
 void oledDisplayLogEntry(const char *message)
 {
     oladAddLogEntryToBufferWithTruncate(message);
-    oledDisplayRedrawTypeLog();
+    if (oledCurrentMode == OLED_MODE_LOG) {
+        oledDisplayRedraw();
+    }    
 }
 
 void oledDisplayStatusDrawCallback(void (*callback)(U8G2_SSD1306_128X32_UNIVISION_F_HW_I2C u8g2))

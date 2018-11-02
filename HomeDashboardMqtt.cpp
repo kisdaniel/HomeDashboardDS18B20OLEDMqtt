@@ -24,7 +24,7 @@ HomeDashboardMqtt *homeDashboardMqtt;
 
 inline void homeDashboardMqttSaveConfigCallback()
 {
-  homeDashboardMqtt->saveConfig();
+  homeDashboardMqtt->saveConfigCallback();
 }
 
 inline void homeDashboardMqttCallback(char *topic, byte *payload, unsigned int length)
@@ -117,7 +117,21 @@ void HomeDashboardMqtt::init()
   }
   analogWrite(this->status_led, NETWORK_STATUS_NOT_CONNECTED);
   // drawText("Connecting to wifi", WiFi.SSID().c_str(), "");
-  if (!this->wifiManager.autoConnect(this->device_type, "password"))
+  if (WiFi.SSID())
+  {
+    this->info("trying to connect with saved credentials to");
+    this->info(WiFi.SSID());
+    if (WiFi.begin())
+    {
+      this->info("connected, ip:");
+      this->info(ipAddress2String(WiFi.localIP()).c_str());
+    }
+    else
+    {
+      this->error("failed to connect");
+    }
+  }
+  else if (!this->wifiManager.autoConnect(this->device_type, "password"))
   {
     this->error("failed to connect and hit timeout, you should reset to reconfigure");
   }
@@ -151,16 +165,22 @@ void HomeDashboardMqtt::loop()
 {
   if (!WiFi.isConnected())
   {
-    analogWrite(this->status_led, NETWORK_STATUS_NOT_CONNECTED);
-    this->error("Wifi connection lost...");
-    // drawText("Connection lost", WiFi.SSID().c_str(), "");
-    if (WiFi.reconnect())
+    long now = millis();
+    if (this->lastConnectRetry + 1000 < now)
     {
-      // drawText("Connected to wifi", WiFi.SSID().c_str(), this->IpAddress2String(WiFi.localIP()).c_str()); //TODO: print temperature
-      analogWrite(this->status_led, NETWORK_STATUS_ONLY_WIFI);
-      this->info("successfully reconnected, local ip:");
-      this->info(ipAddress2String(WiFi.localIP()).c_str());
-      this->connectToMqttIfNotConnected();
+
+      analogWrite(this->status_led, NETWORK_STATUS_NOT_CONNECTED);
+      this->error("Wifi connection lost...");
+      // drawText("Connection lost", WiFi.SSID().c_str(), "");
+      if (WiFi.reconnect())
+      {
+        // drawText("Connected to wifi", WiFi.SSID().c_str(), this->IpAddress2String(WiFi.localIP()).c_str()); //TODO: print temperature
+        analogWrite(this->status_led, NETWORK_STATUS_ONLY_WIFI);
+        this->info("successfully reconnected, local ip:");
+        this->info(ipAddress2String(WiFi.localIP()).c_str());
+        this->connectToMqttIfNotConnected();
+      }
+      this->lastConnectRetry = millis();
     }
   }
   else
@@ -224,7 +244,7 @@ void HomeDashboardMqtt::publishCurrentSettings()
     json.printTo((char *)jsonChar, json.measureLength() + 1);
 
     int result = client.publish(this->topicDeviceCurrentSettings, jsonChar, json.measureLength());
-    if (result == 0)
+    if (result == 1)
     {
       sprintf(this->sprintfBuffer, "current settings published to %s", this->topicDeviceCurrentSettings);
       this->info(this->sprintfBuffer);
@@ -391,12 +411,6 @@ void HomeDashboardMqtt::mqttCallback(char *topic, byte *payload, unsigned int le
   }
 }
 
-void HomeDashboardMqtt::saveConfigCallback()
-{
-  this->saveConfig();
-  this->initTopic();
-}
-
 void HomeDashboardMqtt::loadConfig()
 {
   this->info("mounting FS...");
@@ -458,15 +472,19 @@ void HomeDashboardMqtt::loadConfig()
   }
 }
 
-void HomeDashboardMqtt::saveConfig()
+void HomeDashboardMqtt::saveConfigCallback()
 {
-
   strcpy(this->mqtt_server, this->custom_mqtt_server.getValue());
   strcpy(this->mqtt_port, this->custom_mqtt_port.getValue());
   strcpy(this->mqtt_user, this->custom_mqtt_user.getValue());
   strcpy(this->mqtt_password, this->custom_mqtt_password.getValue());
   strcpy(this->device_name, this->custom_device_name.getValue());
+  this->saveConfig();
+  this->initTopic();
+}
 
+void HomeDashboardMqtt::saveConfig()
+{
   JsonObject &json = this->jsonBuffer->createObject();
   json["mqtt_server"] = this->mqtt_server;
   json["mqtt_port"] = this->mqtt_port;
@@ -499,21 +517,21 @@ String ipAddress2String(const IPAddress &ipAddress)
 
 int getRSSIasQuality(int RSSI)
 {
-    int quality = 0;
+  int quality = 0;
 
-    if (RSSI <= -100)
-    {
-        quality = 0;
-    }
-    else if (RSSI >= -50)
-    {
-        quality = 100;
-    }
-    else
-    {
-        quality = 2 * (RSSI + 100);
-    }
-    return quality;
+  if (RSSI <= -100)
+  {
+    quality = 0;
+  }
+  else if (RSSI >= -50)
+  {
+    quality = 100;
+  }
+  else
+  {
+    quality = 2 * (RSSI + 100);
+  }
+  return quality;
 }
 
 void HomeDashboardMqtt::resetSettings()
@@ -559,7 +577,8 @@ String wifiStatusAsText()
   {
     return "Disconnected";
   }
-  else {
+  else
+  {
     return "----";
   }
 }

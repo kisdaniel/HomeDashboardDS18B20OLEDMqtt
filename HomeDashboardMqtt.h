@@ -40,7 +40,6 @@ public:
   void init();
   void loop();
   void loadConfig();
-  void saveConfigCallback();
   void connectToMqtt();
   void sendDeviceDiscoveryFromDevice();
   void mqttCallback(char *topic, byte *payload, unsigned int length);
@@ -54,6 +53,7 @@ public:
   void flashLedIn();
   void flashLedOut();
   void saveConfig();
+  void saveConfigCallback();
 
   void initTopic();
 
