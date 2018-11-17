@@ -5,8 +5,11 @@
 #include "Arduino.h"
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
 
-#define RELAY_COUNT 2
-#define RELAYS { D3, D0 }
+// Set the number of relays 
+#define RELAY_COUNT 1
+
+// define relay ports
+#define RELAYS { D0 }
 
 #define RELAY_ON  false
 #define RELAY_OFF true

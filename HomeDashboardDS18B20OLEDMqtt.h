@@ -12,7 +12,7 @@
 #define ONE_WIRE_BUS        D7  // one wire bus for DS18B20
 
 // comment below line if you not have OLED
-#define OLED 
+// #define OLED 
 
 // note: D2 is reserved during programming on NodeMCU
 // note: D2, (D0 - not documented, but not works) SCL, SDA is reserved in wifi kit 8 for OLED display 

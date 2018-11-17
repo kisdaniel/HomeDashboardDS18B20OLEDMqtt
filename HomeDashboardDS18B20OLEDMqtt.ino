@@ -2,9 +2,13 @@
 
 #include "HomeDashboardDS18B20OLEDMqtt.h"
 
+#ifdef OLED
 #include "HomeDashboardOLED.h"
+#endif
+
 #include "HomeDashboardMqtt.h"
 #include "HomeDashboardRelay.h"
+#include "HomeDashboardInput.h"
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -75,6 +79,9 @@ void setup()
 
   Serial.begin(115200);
 
+  // SPIFFS.format();
+  //    this->wifiManager.resetSettings();
+
 #ifdef OLED
   oledDisplayStatusDrawCallback(&oledDrawStatus);
   oledDisplayInit();
@@ -86,13 +93,17 @@ void setup()
   initPins();
   homeDashboardMqtt->init();
   initRelays();
+  initInputs();
 }
 
 void loop()
 {
   homeDashboardMqtt->loop();
   wifiResetButtonLoop();
+  loopInputs();
+#ifdef OLED
   oledDisplayLoop();
+#endif
   sensorAutoReadLoop();
 }
 
@@ -114,6 +125,7 @@ void currentState(JsonObject &jsonObject)
   }
   jsonObject["rssi"] = WiFi.RSSI();
   currentRelayState(jsonObject);
+  currentInputState(jsonObject);
 #ifdef OLED
   oledDisplayRedraw();
 #endif
@@ -162,7 +174,7 @@ void onCommand(JsonObject &jsonObject)
       homeDashboardMqtt->error("unsupported command: showState");
 #endif
     }
-    else if(!onRelayCommand(jsonObject)) 
+    else if (!onRelayCommand(jsonObject) && !onInputCommand(jsonObject))
     {
       homeDashboardMqtt->error("unknown command!");
     }
@@ -192,6 +204,7 @@ void loadSettings(JsonObject &jsonObject)
     sensorAutoReadMqttPublish = true;
   }
   loadRelaySettings(jsonObject);
+  loadInputSettings(jsonObject);
 }
 
 void saveSettings(JsonObject &jsonObject)
@@ -199,6 +212,7 @@ void saveSettings(JsonObject &jsonObject)
   jsonObject["sensorAutoReadInterval"] = sensorAutoReadInterval;
   jsonObject["sensorAutoReadMqttPublish"] = sensorAutoReadMqttPublish;
   saveRelaySettings(jsonObject);
+  saveInputSettings(jsonObject);
 }
 
 void initPins()
@@ -266,17 +280,20 @@ void wifiResetButtonLoop()
     if (!wifiReset)
     {
       homeDashboardMqtt->info("reset pressed");
+#ifdef OLED
       oledDisplayChangeMode();
+      delay(50);
+#endif
     }
     wifiResetPreviousState = wifiReset;
-    delay(50);
   }
 }
 
 void sensorAutoReadLoop()
 {
   long now = millis();
-  if ((sensorAutoReadInterval > 0) && (now >= sensorLastRead + sensorAutoReadInterval)) {
+  if ((sensorAutoReadInterval > 0) && (now >= sensorLastRead + sensorAutoReadInterval))
+  {
     if (sensorAutoReadMqttPublish)
     {
       homeDashboardMqtt->publishState();

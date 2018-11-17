@@ -90,6 +90,7 @@ void HomeDashboardMqtt::init()
   this->wifiManager.setConfigPortalTimeout(60 * 3);
 
   // drawText("Initializing", "wait for 2 sec while you can reset", "");
+  //this->wifiManager.resetSettings();
   this->info("wait for 2 sec...");
   delay(2000);
   bool wifiReset = digitalRead(this->wifi_reset_button) == PRESSED;
@@ -111,13 +112,14 @@ void HomeDashboardMqtt::init()
       this->info(this->sprintfBuffer);
       this->info("type 192.168.4.1 to your browser to configure");
 
-      SPIFFS.format();
+      // SPIFFS.format();
       this->wifiManager.resetSettings();
+      this->wifiManager.autoConnect(this->device_type, "password");
     }
   }
   analogWrite(this->status_led, NETWORK_STATUS_NOT_CONNECTED);
   // drawText("Connecting to wifi", WiFi.SSID().c_str(), "");
-  if (WiFi.SSID())
+  if (WiFi.SSID().length()==0)
   {
     this->info("trying to connect with saved credentials to");
     this->info(WiFi.SSID());
