@@ -14,8 +14,8 @@
 // comment below line if you not have OLED
 #define OLED 
 
-// note: D3 is reserved during programming on NodeMCU
-// note: D3, (D0 - not documented, but not works) SCL, SDA is reserved in wifi kit 8 for OLED display 
+// note: D2 is reserved during programming on NodeMCU
+// note: D2, (D0 - not documented, but not works) SCL, SDA is reserved in wifi kit 8 for OLED display 
 
 
 #define DEFAULT_SENSOR_READ_INTERVAL 60000

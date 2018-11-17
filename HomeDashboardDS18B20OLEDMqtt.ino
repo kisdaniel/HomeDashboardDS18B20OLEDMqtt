@@ -4,6 +4,7 @@
 
 #include "HomeDashboardOLED.h"
 #include "HomeDashboardMqtt.h"
+#include "HomeDashboardRelay.h"
 
 #include <OneWire.h>
 #include <DallasTemperature.h>
@@ -84,6 +85,7 @@ void setup()
   homeDashboardMqtt = &homeDashboard;
   initPins();
   homeDashboardMqtt->init();
+  initRelays();
 }
 
 void loop()
@@ -111,6 +113,7 @@ void currentState(JsonObject &jsonObject)
     }
   }
   jsonObject["rssi"] = WiFi.RSSI();
+  currentRelayState(jsonObject);
 #ifdef OLED
   oledDisplayRedraw();
 #endif
@@ -159,7 +162,7 @@ void onCommand(JsonObject &jsonObject)
       homeDashboardMqtt->error("unsupported command: showState");
 #endif
     }
-    else
+    else if(!onRelayCommand(jsonObject)) 
     {
       homeDashboardMqtt->error("unknown command!");
     }
@@ -188,12 +191,14 @@ void loadSettings(JsonObject &jsonObject)
   {
     sensorAutoReadMqttPublish = true;
   }
+  loadRelaySettings(jsonObject);
 }
 
 void saveSettings(JsonObject &jsonObject)
 {
   jsonObject["sensorAutoReadInterval"] = sensorAutoReadInterval;
   jsonObject["sensorAutoReadMqttPublish"] = sensorAutoReadMqttPublish;
+  saveRelaySettings(jsonObject);
 }
 
 void initPins()
